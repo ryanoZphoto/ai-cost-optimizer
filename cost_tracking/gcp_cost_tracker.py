@@ -38,12 +38,21 @@ class GCPCostTracker:
         Args:
             credentials_path (str, optional): Path to GCP credentials JSON file
         """
-        if credentials_path:
-            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+        # For demo mode, don't try to initialize actual clients
+        self.demo_mode = False
         
-        self.billing_client = billing_v1.CloudBillingClient()
-        self.catalog_client = billing_v1.CloudCatalogClient()
-        self.current_date = datetime.now()
+        try:
+            if credentials_path:
+                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
+            
+            self.billing_client = billing_v1.CloudBillingClient()
+            self.catalog_client = billing_v1.CloudCatalogClient()
+            self.current_date = datetime.now()
+        except Exception as e:
+            # If we can't initialize the clients, set demo mode flag
+            print(f"Warning: Could not initialize GCP clients. Using demo mode. Error: {str(e)}")
+            self.demo_mode = True
+            self.current_date = datetime.now()
     
     def get_billing_accounts(self):
         """
@@ -52,6 +61,21 @@ class GCPCostTracker:
         Returns:
             list: List of billing accounts
         """
+        # Return mock billing accounts if in demo mode
+        if self.demo_mode:
+            return [
+                {
+                    'name': 'billingAccounts/demo-account-1',
+                    'display_name': 'Demo Billing Account 1',
+                    'open': True
+                },
+                {
+                    'name': 'billingAccounts/demo-account-2',
+                    'display_name': 'Demo Billing Account 2',
+                    'open': True
+                }
+            ]
+        
         billing_accounts = []
         
         request = billing_v1.ListBillingAccountsRequest()
@@ -81,6 +105,16 @@ class GCPCostTracker:
         Returns:
             list: List of cost data entries
         """
+        # Use mock data if in demo mode
+        if self.demo_mode and generate_mock_gcp_costs:
+            print("Using mock data for GCP costs")
+            return generate_mock_gcp_costs(
+                billing_account=billing_account,
+                start_date=start_date,
+                end_date=end_date,
+                model_name=model_name
+            )
+        
         # Set default dates if not provided
         if not start_date:
             start_date = (self.current_date - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -197,6 +231,26 @@ class GCPCostTracker:
         Returns:
             list: List of GPU machine types
         """
+        # Return mock machine types if in demo mode
+        if self.demo_mode:
+            return [
+                {
+                    'name': 'n1-standard-8-t4',
+                    'description': 'N1 Standard 8 with NVIDIA T4 GPU',
+                    'service': 'Compute Engine'
+                },
+                {
+                    'name': 'a2-highgpu-1g',
+                    'description': 'A2 High GPU with 1 NVIDIA A100 GPU',
+                    'service': 'Compute Engine'
+                },
+                {
+                    'name': 'n1-standard-4-t4',
+                    'description': 'N1 Standard 4 with NVIDIA T4 GPU',
+                    'service': 'Compute Engine'
+                }
+            ]
+        
         gpu_machine_types = []
         
         request = billing_v1.ListServicesRequest()
