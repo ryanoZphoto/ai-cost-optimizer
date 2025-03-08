@@ -184,23 +184,26 @@ def patch_gcp_cost_tracker():
     """
     Monkey patch the GCPCostTracker to use mock data when GCP credentials are missing.
     """
-    from . import gcp_cost_tracker
-    original_get_costs = gcp_cost_tracker.GCPCostTracker.get_costs
-    
-    def patched_get_costs(self, billing_account, *args, **kwargs):
-        try:
-            return original_get_costs(self, billing_account, *args, **kwargs)
-        except Exception as e:
-            print("GCP credentials not found or billing account invalid. Using mock data.")
-            return generate_mock_gcp_costs(
-                billing_account=billing_account,
-                start_date=kwargs.get('start_date'),
-                end_date=kwargs.get('end_date'),
-                model_name=kwargs.get('model_name')
-            )
-    
-    # Apply the patch
-    gcp_cost_tracker.GCPCostTracker.get_costs = patched_get_costs
+    try:
+        from . import gcp_cost_tracker
+        original_get_costs = gcp_cost_tracker.GCPCostTracker.get_costs
+        
+        def patched_get_costs(self, billing_account, *args, **kwargs):
+            try:
+                return original_get_costs(self, billing_account, *args, **kwargs)
+            except Exception as e:
+                print("GCP credentials not found or billing account invalid. Using mock data.")
+                return generate_mock_gcp_costs(
+                    billing_account=billing_account,
+                    start_date=kwargs.get('start_date'),
+                    end_date=kwargs.get('end_date'),
+                    model_name=kwargs.get('model_name')
+                )
+        
+        # Apply the patch
+        gcp_cost_tracker.GCPCostTracker.get_costs = patched_get_costs
+    except (ImportError, AttributeError) as e:
+        print(f"Warning: Could not patch GCP Cost Tracker: {str(e)}")
 
 def apply_patches():
     """

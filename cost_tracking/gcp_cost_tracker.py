@@ -16,12 +16,17 @@ import json
 from datetime import datetime, timedelta
 import pandas as pd
 from google.cloud import billing_v1
-from google.cloud.billing import CloudCatalog, CloudBilling
 
 # Add path to parent directory
 import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cost_tracking.database import insert_model_cost
+
+# Import for mock data (will be used if credentials aren't available)
+try:
+    from cost_tracking.mock_data import generate_mock_gcp_costs
+except ImportError:
+    generate_mock_gcp_costs = None
 
 class GCPCostTracker:
     """Class to track GCP GPU/TPU usage costs."""
@@ -279,46 +284,85 @@ def main():
     parser.add_argument('--model-name', type=str, help='Model name to filter by labels')
     parser.add_argument('--save-to-db', action='store_true', help='Save costs to database')
     parser.add_argument('--output', type=str, help='Output path for CSV file')
+    parser.add_argument('--use-mock-data', action='store_true', help='Use mock data instead of real GCP API')
     
     args = parser.parse_args()
     
-    # Initialize GCP Cost Tracker
-    cost_tracker = GCPCostTracker(credentials_path=args.credentials)
-    
-    # List billing accounts if no billing account provided
-    if not args.billing_account:
-        print("No billing account provided. Available billing accounts:")
-        billing_accounts = cost_tracker.get_billing_accounts()
-        for account in billing_accounts:
-            print(f"- {account['name']} ({account['display_name']})")
-        return
-    
-    # Get costs
-    print(f"Fetching GCP costs for billing account {args.billing_account}...")
-    cost_records = cost_tracker.get_costs(
-        billing_account=args.billing_account,
-        start_date=args.start_date,
-        end_date=args.end_date,
-        filter_string=args.filter,
-        model_name=args.model_name
-    )
-    
-    # Print total cost
-    total_cost = sum(record['cost'] for record in cost_records)
-    print(f"Total GCP cost: ${total_cost:.2f}")
-    
-    # Save to database if requested
-    if args.save_to_db:
-        records_saved = cost_tracker.save_costs_to_db(
-            cost_records,
+    try:
+        # Initialize GCP Cost Tracker
+        cost_tracker = GCPCostTracker(credentials_path=args.credentials)
+        
+        # List billing accounts if no billing account provided
+        if not args.billing_account:
+            print("No billing account provided. Available billing accounts:")
+            billing_accounts = cost_tracker.get_billing_accounts()
+            for account in billing_accounts:
+                print(f"- {account['name']} ({account['display_name']})")
+            return
+        
+        # Get costs
+        print(f"Fetching GCP costs for billing account {args.billing_account}...")
+        cost_records = cost_tracker.get_costs(
+            billing_account=args.billing_account,
+            start_date=args.start_date,
+            end_date=args.end_date,
+            filter_string=args.filter,
             model_name=args.model_name
         )
-        print(f"Saved {records_saved} records to database")
-    
-    # Export to CSV if requested
-    if args.output:
-        csv_path = cost_tracker.export_costs_to_csv(cost_records, args.output)
-        print(f"Exported costs to {csv_path}")
+        
+        # Print total cost
+        total_cost = sum(record['cost'] for record in cost_records)
+        print(f"Total GCP cost: ${total_cost:.2f}")
+        
+        # Save to database if requested
+        if args.save_to_db:
+            records_saved = cost_tracker.save_costs_to_db(
+                cost_records,
+                model_name=args.model_name
+            )
+            print(f"Saved {records_saved} records to database")
+        
+        # Export to CSV if requested
+        if args.output:
+            csv_path = cost_tracker.export_costs_to_csv(cost_records, args.output)
+            print(f"Exported costs to {csv_path}")
+            
+    except Exception as e:
+        if args.use_mock_data or "google.auth" in str(e) or "Credentials" in str(e) or "credentials" in str(e):
+            print("GCP credentials not found or mock data requested. Using mock data.")
+            
+            if generate_mock_gcp_costs:
+                # Generate mock data
+                mock_records = generate_mock_gcp_costs(
+                    billing_account=args.billing_account,
+                    start_date=args.start_date,
+                    end_date=args.end_date,
+                    model_name=args.model_name
+                )
+                
+                # Initialize GCP Cost Tracker (without credentials) for saving/exporting
+                cost_tracker = GCPCostTracker()
+                
+                # Print total cost
+                total_cost = sum(record['cost'] for record in mock_records)
+                print(f"Total GCP cost (mock data): ${total_cost:.2f}")
+                
+                # Save to database if requested
+                if args.save_to_db:
+                    records_saved = cost_tracker.save_costs_to_db(
+                        mock_records,
+                        model_name=args.model_name
+                    )
+                    print(f"Saved {records_saved} mock records to database")
+                
+                # Export to CSV if requested
+                if args.output:
+                    csv_path = cost_tracker.export_costs_to_csv(mock_records, args.output)
+                    print(f"Exported mock costs to {csv_path}")
+            else:
+                print("Error: Mock data module not available. Please run 'python main.py demo' instead.")
+        else:
+            print(f"Error: {str(e)}")
 
 if __name__ == "__main__":
     main() 
