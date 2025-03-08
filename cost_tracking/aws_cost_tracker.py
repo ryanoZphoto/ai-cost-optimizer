@@ -22,12 +22,6 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cost_tracking.database import insert_model_cost
 
-# Import for mock data (will be used if credentials aren't available)
-try:
-    from cost_tracking.mock_data import generate_mock_aws_costs
-except ImportError:
-    generate_mock_aws_costs = None
-
 class AWSCostTracker:
     """Class to track AWS GPU/TPU usage costs."""
     
@@ -306,7 +300,6 @@ def main():
     parser.add_argument('--model-name', type=str, help='Model name to filter by tags')
     parser.add_argument('--save-to-db', action='store_true', help='Save costs to database')
     parser.add_argument('--output', type=str, help='Output path for CSV file')
-    parser.add_argument('--use-mock-data', action='store_true', help='Use mock data instead of real AWS API')
     
     args = parser.parse_args()
     
@@ -353,40 +346,11 @@ def main():
             print(f"Exported costs to {csv_path}")
     
     except Exception as e:
-        if "Unable to locate credentials" in str(e) or args.use_mock_data:
-            print("AWS credentials not found or mock data requested. Using mock data.")
-            
-            if generate_mock_aws_costs:
-                # Generate mock data
-                mock_response = generate_mock_aws_costs(
-                    start_date=args.start_date,
-                    end_date=args.end_date,
-                    model_name=args.model_name
-                )
-                
-                # Initialize AWS Cost Tracker for parsing
-                cost_tracker = AWSCostTracker(profile=args.profile, region=args.region)
-                
-                # Parse mock responses
-                all_records = cost_tracker.parse_cost_response(mock_response, model_name=args.model_name)
-                
-                # Print total cost
-                total_cost = sum(record['cost'] for record in all_records)
-                print(f"Total AWS cost (mock data): ${total_cost:.2f}")
-                
-                # Save to database if requested
-                if args.save_to_db:
-                    records_saved = cost_tracker.save_costs_to_db(all_records)
-                    print(f"Saved {records_saved} mock records to database")
-                
-                # Export to CSV if requested
-                if args.output:
-                    csv_path = cost_tracker.export_costs_to_csv(all_records, args.output)
-                    print(f"Exported mock costs to {csv_path}")
-            else:
-                print("Error: Mock data module not available. Please run 'python main.py demo' instead.")
-        else:
-            print(f"Error: {str(e)}")
+        print(f"Error: {str(e)}")
+        print("\nTo configure AWS credentials, follow these steps:")
+        print("1. Install AWS CLI: https://aws.amazon.com/cli/")
+        print("2. Run 'aws configure' and enter your AWS Access Key, Secret Key, region, and output format")
+        print("3. Ensure your IAM user has permissions for Cost Explorer (ce:*)")
 
 if __name__ == "__main__":
     main() 

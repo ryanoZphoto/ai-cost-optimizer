@@ -22,12 +22,6 @@ import sys
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from cost_tracking.database import insert_model_cost
 
-# Import for mock data (will be used if credentials aren't available)
-try:
-    from cost_tracking.mock_data import generate_mock_gcp_costs
-except ImportError:
-    generate_mock_gcp_costs = None
-
 class GCPCostTracker:
     """Class to track GCP GPU/TPU usage costs."""
     
@@ -38,21 +32,12 @@ class GCPCostTracker:
         Args:
             credentials_path (str, optional): Path to GCP credentials JSON file
         """
-        # For demo mode, don't try to initialize actual clients
-        self.demo_mode = False
+        if credentials_path:
+            os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
         
-        try:
-            if credentials_path:
-                os.environ['GOOGLE_APPLICATION_CREDENTIALS'] = credentials_path
-            
-            self.billing_client = billing_v1.CloudBillingClient()
-            self.catalog_client = billing_v1.CloudCatalogClient()
-            self.current_date = datetime.now()
-        except Exception as e:
-            # If we can't initialize the clients, set demo mode flag
-            print(f"Warning: Could not initialize GCP clients. Using demo mode. Error: {str(e)}")
-            self.demo_mode = True
-            self.current_date = datetime.now()
+        self.billing_client = billing_v1.CloudBillingClient()
+        self.catalog_client = billing_v1.CloudCatalogClient()
+        self.current_date = datetime.now()
     
     def get_billing_accounts(self):
         """
@@ -61,21 +46,6 @@ class GCPCostTracker:
         Returns:
             list: List of billing accounts
         """
-        # Return mock billing accounts if in demo mode
-        if self.demo_mode:
-            return [
-                {
-                    'name': 'billingAccounts/demo-account-1',
-                    'display_name': 'Demo Billing Account 1',
-                    'open': True
-                },
-                {
-                    'name': 'billingAccounts/demo-account-2',
-                    'display_name': 'Demo Billing Account 2',
-                    'open': True
-                }
-            ]
-        
         billing_accounts = []
         
         request = billing_v1.ListBillingAccountsRequest()
@@ -105,16 +75,6 @@ class GCPCostTracker:
         Returns:
             list: List of cost data entries
         """
-        # Use mock data if in demo mode
-        if self.demo_mode and generate_mock_gcp_costs:
-            print("Using mock data for GCP costs")
-            return generate_mock_gcp_costs(
-                billing_account=billing_account,
-                start_date=start_date,
-                end_date=end_date,
-                model_name=model_name
-            )
-        
         # Set default dates if not provided
         if not start_date:
             start_date = (self.current_date - timedelta(days=30)).strftime('%Y-%m-%d')
@@ -231,26 +191,6 @@ class GCPCostTracker:
         Returns:
             list: List of GPU machine types
         """
-        # Return mock machine types if in demo mode
-        if self.demo_mode:
-            return [
-                {
-                    'name': 'n1-standard-8-t4',
-                    'description': 'N1 Standard 8 with NVIDIA T4 GPU',
-                    'service': 'Compute Engine'
-                },
-                {
-                    'name': 'a2-highgpu-1g',
-                    'description': 'A2 High GPU with 1 NVIDIA A100 GPU',
-                    'service': 'Compute Engine'
-                },
-                {
-                    'name': 'n1-standard-4-t4',
-                    'description': 'N1 Standard 4 with NVIDIA T4 GPU',
-                    'service': 'Compute Engine'
-                }
-            ]
-        
         gpu_machine_types = []
         
         request = billing_v1.ListServicesRequest()
@@ -338,7 +278,6 @@ def main():
     parser.add_argument('--model-name', type=str, help='Model name to filter by labels')
     parser.add_argument('--save-to-db', action='store_true', help='Save costs to database')
     parser.add_argument('--output', type=str, help='Output path for CSV file')
-    parser.add_argument('--use-mock-data', action='store_true', help='Use mock data instead of real GCP API')
     
     args = parser.parse_args()
     
@@ -380,43 +319,13 @@ def main():
         if args.output:
             csv_path = cost_tracker.export_costs_to_csv(cost_records, args.output)
             print(f"Exported costs to {csv_path}")
-            
+    
     except Exception as e:
-        if args.use_mock_data or "google.auth" in str(e) or "Credentials" in str(e) or "credentials" in str(e):
-            print("GCP credentials not found or mock data requested. Using mock data.")
-            
-            if generate_mock_gcp_costs:
-                # Generate mock data
-                mock_records = generate_mock_gcp_costs(
-                    billing_account=args.billing_account,
-                    start_date=args.start_date,
-                    end_date=args.end_date,
-                    model_name=args.model_name
-                )
-                
-                # Initialize GCP Cost Tracker (without credentials) for saving/exporting
-                cost_tracker = GCPCostTracker()
-                
-                # Print total cost
-                total_cost = sum(record['cost'] for record in mock_records)
-                print(f"Total GCP cost (mock data): ${total_cost:.2f}")
-                
-                # Save to database if requested
-                if args.save_to_db:
-                    records_saved = cost_tracker.save_costs_to_db(
-                        mock_records,
-                        model_name=args.model_name
-                    )
-                    print(f"Saved {records_saved} mock records to database")
-                
-                # Export to CSV if requested
-                if args.output:
-                    csv_path = cost_tracker.export_costs_to_csv(mock_records, args.output)
-                    print(f"Exported mock costs to {csv_path}")
-            else:
-                print("Error: Mock data module not available. Please run 'python main.py demo' instead.")
-        else:
-            print(f"Error: {str(e)}")
+        print(f"Error: {str(e)}")
+        print("\nTo configure GCP credentials, follow these steps:")
+        print("1. Create a service account with Billing Viewer permissions in the Google Cloud Console")
+        print("2. Download the service account key JSON file")
+        print("3. Set the path to the JSON file with --credentials or set the GOOGLE_APPLICATION_CREDENTIALS environment variable")
 
 if __name__ == "__main__":
     main() 

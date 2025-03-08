@@ -56,14 +56,8 @@ def run_onnx_optimization(model_name, optimize=True, save_to_db=True):
     
     run(cmd, check=True)
 
-def run_aws_cost_tracking(start_date=None, end_date=None, model_name=None, save_to_db=True, demo_mode=False):
+def run_aws_cost_tracking(start_date=None, end_date=None, model_name=None, save_to_db=True):
     """Run AWS cost tracking."""
-    # Apply mock data patches if in demo mode
-    if demo_mode:
-        print("Running in demo mode with mock data")
-        from cost_tracking.mock_data import patch_aws_cost_tracker
-        patch_aws_cost_tracker()
-    
     aws_tracker_path = os.path.join('cost_tracking', 'aws_cost_tracker.py')
     cmd = [sys.executable, aws_tracker_path]
     
@@ -81,14 +75,8 @@ def run_aws_cost_tracking(start_date=None, end_date=None, model_name=None, save_
     
     run(cmd, check=True)
 
-def run_gcp_cost_tracking(billing_account, start_date=None, end_date=None, model_name=None, save_to_db=True, demo_mode=False):
+def run_gcp_cost_tracking(billing_account, start_date=None, end_date=None, model_name=None, save_to_db=True):
     """Run GCP cost tracking."""
-    # Apply mock data patches if in demo mode
-    if demo_mode:
-        print("Running in demo mode with mock data")
-        from cost_tracking.mock_data import patch_gcp_cost_tracker
-        patch_gcp_cost_tracker()
-    
     gcp_tracker_path = os.path.join('cost_tracking', 'gcp_cost_tracker.py')
     cmd = [sys.executable, gcp_tracker_path, "--billing-account", billing_account]
     
@@ -113,10 +101,10 @@ def main():
     subparsers = parser.add_subparsers(dest='command', help='Command to run')
     
     # Dashboard command
-    dashboard_parser = subparsers.add_parser('dashboard', help='Run the Streamlit dashboard')
+    subparsers.add_parser('dashboard', help='Run the Streamlit dashboard')
     
     # Initialize database command
-    init_parser = subparsers.add_parser('init', help='Initialize the database with sample data')
+    subparsers.add_parser('init', help='Initialize the database with sample data')
     
     # Model comparison command
     compare_parser = subparsers.add_parser('compare', help='Run model comparison')
@@ -136,19 +124,14 @@ def main():
     aws_parser.add_argument('--end-date', type=str, help='End date (YYYY-MM-DD)')
     aws_parser.add_argument('--model-name', type=str, help='Model name to filter by tags')
     aws_parser.add_argument('--no-save', action='store_true', help='Do not save results to database')
-    aws_parser.add_argument('--demo', action='store_true', help='Use mock data for demonstration')
     
     # GCP cost tracking command
     gcp_parser = subparsers.add_parser('gcp-costs', help='Track GCP GPU/TPU usage costs')
-    gcp_parser.add_argument('--billing-account', type=str, default='demo-account', help='GCP billing account ID')
+    gcp_parser.add_argument('--billing-account', type=str, required=True, help='GCP billing account ID')
     gcp_parser.add_argument('--start-date', type=str, help='Start date (YYYY-MM-DD)')
     gcp_parser.add_argument('--end-date', type=str, help='End date (YYYY-MM-DD)')
     gcp_parser.add_argument('--model-name', type=str, help='Model name to filter by labels')
     gcp_parser.add_argument('--no-save', action='store_true', help='Do not save results to database')
-    gcp_parser.add_argument('--demo', action='store_true', help='Use mock data for demonstration')
-    
-    # Demo command
-    demo_parser = subparsers.add_parser('demo', help='Run a full demo with mock data')
     
     # Parse arguments
     args = parser.parse_args()
@@ -163,31 +146,9 @@ def main():
     elif args.command == 'optimize':
         run_onnx_optimization(args.model_name, not args.no_optimize, not args.no_save)
     elif args.command == 'aws-costs':
-        run_aws_cost_tracking(args.start_date, args.end_date, args.model_name, not args.no_save, args.demo)
+        run_aws_cost_tracking(args.start_date, args.end_date, args.model_name, not args.no_save)
     elif args.command == 'gcp-costs':
-        run_gcp_cost_tracking(args.billing_account, args.start_date, args.end_date, args.model_name, not args.no_save, args.demo)
-    elif args.command == 'demo':
-        print("Running full demo with mock data...")
-        # Initialize the database
-        init_database()
-        
-        # Import and apply mock data patches
-        from cost_tracking.mock_data import apply_patches
-        apply_patches()
-        
-        # Run AWS cost tracking with mock data
-        print("\nGenerating AWS cost data...")
-        aws_tracker_path = os.path.join('cost_tracking', 'aws_cost_tracker.py')
-        run([sys.executable, aws_tracker_path, "--save-to-db"], check=True)
-        
-        # Run GCP cost tracking with mock data
-        print("\nGenerating GCP cost data...")
-        gcp_tracker_path = os.path.join('cost_tracking', 'gcp_cost_tracker.py')
-        run([sys.executable, gcp_tracker_path, "--billing-account", "demo-account", "--save-to-db"], check=True)
-        
-        # Run the dashboard
-        print("\nLaunching dashboard...")
-        run_dashboard()
+        run_gcp_cost_tracking(args.billing_account, args.start_date, args.end_date, args.model_name, not args.no_save)
     else:
         # Default to showing help
         parser.print_help()
